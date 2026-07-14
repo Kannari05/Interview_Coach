@@ -523,10 +523,11 @@ if st.session_state.page == "home":
     </div>
     """, unsafe_allow_html=True)
 
-   col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
     metrics = [(str(len(QUESTIONS_DB)), "Roles Available"), ("20+", "Questions"), ("4", "Scoring Dimensions"), ("ML", "Powered Engine")]
     for col, (val, lbl) in zip([col1,col2,col3,col4], metrics):
         col.markdown(f'<div class="metric-card"><div class="val">{val}</div><div class="label">{lbl}</div></div>', unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2 = st.columns([1, 1])
     with c1:

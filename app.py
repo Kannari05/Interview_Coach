@@ -1,1063 +1,805 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
+import random
+import time
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    roc_auc_score, confusion_matrix, classification_report,
-    roc_curve, auc
-)
-import xgboost as xgb
-import warnings
-warnings.filterwarnings('ignore')
+import speech_recognition as sr
 
-# Page configuration
+# ─────────────────────────────────────────────
+# PAGE CONFIG
+# ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Blood Report Health Risk Analyzer",
-    page_icon="🩺",
+    page_title="AI Interview Coach",
+    page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better appearance
+# ─────────────────────────────────────────────
+# CUSTOM CSS
+# ─────────────────────────────────────────────
 st.markdown("""
-    <style>
-    .main-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .risk-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 1rem;
-        border-left: 4px solid;
-    }
-    .metric-card {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 8px;
-        text-align: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .insight-box {
-        background: #e3f2fd;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-        border-left: 4px solid #2196f3;
-    }
-    .warning-box {
-        background: #fff3e0;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-        border-left: 4px solid #ff9800;
-    }
-    .critical-box {
-        background: #ffebee;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-        border-left: 4px solid #f44336;
-    }
-    .stButton>button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        font-weight: bold;
-        border: none;
-        padding: 0.75rem 2rem;
-        border-radius: 50px;
-        width: 100%;
-    }
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-    }
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
+
+:root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --accent: #00e5ff;
+    --accent2: #7c3aed;
+    --accent3: #f59e0b;
+    --green: #10b981;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --border: rgba(0,229,255,0.15);
+}
+
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif;
+    background-color: var(--bg) !important;
+    color: var(--text) !important;
+}
+
+h1, h2, h3, h4 {
+    font-family: 'Syne', sans-serif !important;
+    letter-spacing: -0.02em;
+}
+
+/* Main background */
+.stApp { background: linear-gradient(135deg, #0a0e1a 0%, #0d1526 50%, #0a0e1a 100%); }
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0d1526 0%, #111827 100%) !important;
+    border-right: 1px solid var(--border);
+}
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stSlider label,
+[data-testid="stSidebar"] p {
+    color: var(--text) !important;
+}
+
+/* Metric cards */
+.metric-card {
+    background: linear-gradient(135deg, #111827, #1a2235);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    transition: transform 0.2s ease;
+}
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+.metric-card .val {
+    font-family: 'Syne', sans-serif;
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+}
+.metric-card .label {
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 6px;
+}
+
+/* Feedback box */
+.feedback-box {
+    background: linear-gradient(135deg, #1a2235, #111827);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 12px 0;
+    font-size: 0.95rem;
+    line-height: 1.7;
+}
+
+/* Answer area */
+.stTextArea textarea {
+    background: #111827 !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.95rem !important;
+}
+.stTextArea textarea:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px rgba(0,229,255,0.15) !important;
+}
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, #00c4d9, #7c3aed) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 0.05em !important;
+    padding: 10px 28px !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 4px 15px rgba(0,229,255,0.2) !important;
+}
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 25px rgba(0,229,255,0.35) !important;
+}
+
+/* Selectbox & slider */
+.stSelectbox > div > div {
+    background: #111827 !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    color: var(--text) !important;
+}
+.stSlider > div > div { color: var(--accent) !important; }
+
+/* Progress bar */
+.stProgress > div > div { background: linear-gradient(90deg, var(--accent), var(--accent2)) !important; }
+
+/* Section header */
+.section-header {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin: 24px 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.section-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    margin-left: 8px;
+}
+
+/* Score badge */
+.score-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+.badge-excellent { background: rgba(16,185,129,0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); }
+.badge-good      { background: rgba(0,229,255,0.2);  color: #00e5ff; border: 1px solid rgba(0,229,255,0.4);  }
+.badge-average   { background: rgba(245,158,11,0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); }
+.badge-poor      { background: rgba(239,68,68,0.2);  color: #ef4444; border: 1px solid rgba(239,68,68,0.4);  }
+
+/* Alert boxes */
+.alert-success {
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: #10b981;
+    margin: 8px 0;
+}
+.alert-warning {
+    background: rgba(245,158,11,0.1);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: #f59e0b;
+    margin: 8px 0;
+}
+div[data-testid="stMarkdownContainer"] p { color: var(--text) !important; }
+</style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'models_trained' not in st.session_state:
-    st.session_state.models_trained = False
-if 'sample_data' not in st.session_state:
-    st.session_state.sample_data = None
-if 'trained_models' not in st.session_state:
-    st.session_state.trained_models = {}
-if 'model_metrics' not in st.session_state:
-    st.session_state.model_metrics = {}
+# ─────────────────────────────────────────────
+# SAMPLE DATA
+# ─────────────────────────────────────────────
+from questions import QUESTIONS_DB
+from languages import LANGUAGE_DB
 
-# Function to generate synthetic blood report data
-@st.cache_data
-def generate_sample_data(n_samples=5000, seed=42):
-    """Generate synthetic blood report data with realistic patterns"""
-    np.random.seed(seed)
-    
-    # Normal ranges for blood parameters
-    normal_ranges = {
-        # Complete Blood Count
-        'Hemoglobin': {'male': (13.5, 17.5), 'female': (12.0, 15.5)},
-        'RBC': {'male': (4.5, 5.9), 'female': (4.1, 5.1)},
-        'WBC': (4.5, 11.0),
-        'Platelets': (150, 450),
-        'Neutrophils': (40, 70),
-        'Lymphocytes': (20, 40),
-        'Monocytes': (2, 8),
-        'Eosinophils': (1, 4),
-        'Basophils': (0, 1),
-        
-        # Lipid Profile
-        'Total_Cholesterol': (125, 200),
-        'HDL': (40, 60),
-        'LDL': (0, 100),
-        'Triglycerides': (0, 150),
-        
-        # Diabetes Markers
-        'Fasting_Glucose': (70, 100),
-        'HbA1c': (4, 5.6),
-        'Postprandial_Glucose': (0, 140),
-        
-        # Kidney Function
-        'Creatinine': {'male': (0.6, 1.2), 'female': (0.5, 1.1)},
-        'BUN': (7, 20),
-        'Uric_Acid': {'male': (3.5, 7.2), 'female': (2.6, 6.0)},
-        
-        # Liver Function
-        'ALT': (7, 56),
-        'AST': (10, 40),
-        'ALP': (44, 147),
-        'Total_Protein': (6.0, 8.3),
-        'Albumin': (3.5, 5.0),
-        
-        # Cardiac Markers
-        'Troponin_I': (0, 0.04),
-        'CK_MB': (0, 5),
-        'CRP': (0, 1.0),
-        'Homocysteine': (5, 15),
-        
-        # Electrolytes
-        'Sodium': (135, 145),
-        'Potassium': (3.5, 5.0),
-        'Chloride': (98, 107),
-        'Calcium': (8.5, 10.2),
-        'Magnesium': (1.7, 2.2),
-        
-        # Inflammatory Markers
-        'ESR': (0, 15),
-        'Ferritin': {'male': (20, 250), 'female': (10, 150)},
-        
-        # Vitamins
-        'Vitamin_D': (30, 100),
-        'Vitamin_B12': (200, 900),
-    }
-    
-    data = []
-    labels = {
-        'heart_disease': [],
-        'diabetes': [],
-        'kidney_disease': [],
-        'infection': [],
-        'anemia': [],
-        'liver_disease': []
-    }
-    
-    for i in range(n_samples):
-        # Random gender
-        gender = np.random.choice(['male', 'female'])
-        age = np.random.randint(18, 85)
-        
-        # Generate base values
-        sample = {'Age': age, 'Gender': gender}
-        
-        for param, ranges in normal_ranges.items():
-            if isinstance(ranges, dict):
-                if gender in ranges:
-                    low, high = ranges[gender]
-                else:
-                    low, high = ranges['male']  # default
-            else:
-                low, high = ranges
-            
-            # Generate value with some natural variation
-            mean = (low + high) / 2
-            std = (high - low) / 6
-            value = np.random.normal(mean, std)
-            sample[param] = max(low * 0.6, min(high * 1.5, value))
-        
-        # Introduce disease patterns
-        
-        # Heart Disease Pattern
-        heart_risk = 0
-        if np.random.random() < 0.15:  # 15% prevalence
-            heart_risk = 1
-            sample['Troponin_I'] *= np.random.uniform(2, 10)
-            sample['CK_MB'] *= np.random.uniform(2, 8)
-            sample['CRP'] *= np.random.uniform(2, 15)
-            sample['LDL'] *= np.random.uniform(1.3, 2.2)
-            sample['HDL'] *= np.random.uniform(0.4, 0.8)
-            sample['Homocysteine'] *= np.random.uniform(1.3, 2.5)
-        
-        # Diabetes Pattern
-        diabetes_risk = 0
-        if np.random.random() < 0.20:  # 20% prevalence
-            diabetes_risk = 1
-            sample['Fasting_Glucose'] = np.random.uniform(126, 300)
-            sample['HbA1c'] = np.random.uniform(6.5, 12)
-            sample['Postprandial_Glucose'] = np.random.uniform(200, 400)
-            sample['Triglycerides'] *= np.random.uniform(1.3, 2.8)
-            sample['HDL'] *= np.random.uniform(0.5, 0.9)
-        
-        # Kidney Disease Pattern
-        kidney_risk = 0
-        if np.random.random() < 0.10:  # 10% prevalence
-            kidney_risk = 1
-            sample['Creatinine'] *= np.random.uniform(1.8, 5)
-            sample['BUN'] *= np.random.uniform(1.8, 4.5)
-            sample['Uric_Acid'] *= np.random.uniform(1.3, 2.5)
-            sample['Potassium'] *= np.random.uniform(1.1, 1.6)
-            sample['Calcium'] *= np.random.uniform(0.6, 0.9)
-        
-        # Infection Pattern
-        infection_risk = 0
-        if np.random.random() < 0.12:  # 12% prevalence
-            infection_risk = 1
-            sample['WBC'] *= np.random.uniform(1.5, 4)
-            sample['Neutrophils'] *= np.random.uniform(1.2, 1.8)
-            sample['CRP'] *= np.random.uniform(5, 30)
-            sample['ESR'] *= np.random.uniform(2, 8)
-            sample['Ferritin'] *= np.random.uniform(1.5, 5)
-        
-        # Anemia Pattern
-        anemia_risk = 0
-        if np.random.random() < 0.15:  # 15% prevalence
-            anemia_risk = 1
-            sample['Hemoglobin'] *= np.random.uniform(0.5, 0.85)
-            sample['RBC'] *= np.random.uniform(0.6, 0.9)
-            sample['Ferritin'] *= np.random.uniform(0.3, 0.8)
-            sample['Vitamin_B12'] *= np.random.uniform(0.3, 0.7)
-        
-        # Liver Disease Pattern
-        liver_risk = 0
-        if np.random.random() < 0.08:  # 8% prevalence
-            liver_risk = 1
-            sample['ALT'] *= np.random.uniform(2, 8)
-            sample['AST'] *= np.random.uniform(2, 6)
-            sample['ALP'] *= np.random.uniform(1.5, 4)
-            sample['Total_Protein'] *= np.random.uniform(0.7, 0.9)
-            sample['Albumin'] *= np.random.uniform(0.6, 0.85)
-        
-        data.append(sample)
-        labels['heart_disease'].append(heart_risk)
-        labels['diabetes'].append(diabetes_risk)
-        labels['kidney_disease'].append(kidney_risk)
-        labels['infection'].append(infection_risk)
-        labels['anemia'].append(anemia_risk)
-        labels['liver_disease'].append(liver_risk)
-    
-    df = pd.DataFrame(data)
-    for disease, values in labels.items():
-        df[disease] = values
-    
-    return df, normal_ranges
+SAMPLE_HISTORY = pd.DataFrame({
+    "Session": [f"Session {i}" for i in range(1, 9)],
+    "Date": pd.date_range("2024-11-01", periods=8, freq="5D"),
+    "Role": ["Software Engineer"]*4 + ["Data Scientist"]*4,
+    "Avg Score": [52, 61, 68, 74, 45, 58, 67, 76],
+    "Questions": [5, 5, 6, 6, 5, 5, 6, 6],
+    "Confidence": [55, 63, 70, 78, 48, 60, 68, 79],
+    "Clarity":    [50, 60, 67, 72, 44, 57, 66, 74],
+    "Relevance":  [51, 60, 67, 72, 43, 57, 66, 75],
+})
 
-# Function to train ML models
-def train_health_risk_models(df, target_disease):
-    """Train ML models for specific health risk prediction"""
-    
-    # Define feature sets for each disease
-    feature_sets = {
-        'heart_disease': ['Age', 'Total_Cholesterol', 'HDL', 'LDL', 'Triglycerides', 
-                          'Troponin_I', 'CK_MB', 'CRP', 'Homocysteine', 'Fasting_Glucose'],
-        'diabetes': ['Age', 'Fasting_Glucose', 'HbA1c', 'Postprandial_Glucose', 
-                     'Total_Cholesterol', 'HDL', 'LDL', 'Triglycerides', 'BMI'],
-        'kidney_disease': ['Age', 'Creatinine', 'BUN', 'Uric_Acid', 'Sodium', 
-                           'Potassium', 'Calcium', 'Albumin', 'Hemoglobin'],
-        'infection': ['Age', 'WBC', 'Neutrophils', 'Lymphocytes', 'CRP', 
-                      'ESR', 'Ferritin', 'Temperature'],
-        'anemia': ['Age', 'Hemoglobin', 'RBC', 'MCV', 'MCH', 'MCHC', 
-                   'Ferritin', 'Vitamin_B12', 'Iron'],
-        'liver_disease': ['Age', 'ALT', 'AST', 'ALP', 'Total_Protein', 
-                          'Albumin', 'Bilirubin', 'GGT']
-    }
-    
-    # Calculate BMI if not present
-    if 'BMI' not in df.columns:
-        df['BMI'] = np.random.normal(24, 4, len(df))  # Simulated BMI
-    
-    # Get features for this disease
-    features = feature_sets[target_disease]
-    available_features = [f for f in features if f in df.columns]
-    
-    X = df[available_features].copy()
-    y = df[target_disease]
-    
-    # Handle categorical variables
-    if 'Gender' in X.columns:
-        le = LabelEncoder()
-        X['Gender'] = le.fit_transform(X['Gender'])
-    
-    # Handle missing values
-    X = X.fillna(X.mean())
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    
-    # Scale features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    
-    # Train multiple models
-    models = {
-        'Random Forest': RandomForestClassifier(
-            n_estimators=200, max_depth=15, random_state=42
-        ),
-        'XGBoost': xgb.XGBClassifier(
-            n_estimators=200, max_depth=8, learning_rate=0.05,
-            random_state=42, eval_metric='logloss'
-        ),
-        'Gradient Boosting': GradientBoostingClassifier(
-            n_estimators=200, max_depth=8, learning_rate=0.05, random_state=42
-        ),
-        'Logistic Regression': LogisticRegression(
-            max_iter=1000, random_state=42
-        )
-    }
-    
-    results = {}
-    trained_models = {}
-    
-    for name, model in models.items():
-        # Train model
-        model.fit(X_train_scaled, y_train)
-        
-        # Predictions
-        y_pred = model.predict(X_test_scaled)
-        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-        
-        # Calculate metrics
-        metrics = {
-            'Accuracy': accuracy_score(y_test, y_pred),
-            'Precision': precision_score(y_test, y_pred, zero_division=0),
-            'Recall': recall_score(y_test, y_pred, zero_division=0),
-            'F1-Score': f1_score(y_test, y_pred, zero_division=0),
-            'ROC-AUC': roc_auc_score(y_test, y_pred_proba)
-        }
-        
-        results[name] = metrics
-        trained_models[name] = {
-            'model': model,
-            'scaler': scaler,
-            'features': available_features
-        }
-    
-    # Select best model based on F1-score
-    best_model_name = max(results, key=lambda x: results[x]['F1-Score'])
-    
-    return {
-        'best_model': trained_models[best_model_name],
-        'best_model_name': best_model_name,
-        'all_results': results,
-        'feature_importance': dict(zip(
-            available_features,
-            trained_models[best_model_name]['model'].feature_importances_
-            if hasattr(trained_models[best_model_name]['model'], 'feature_importances_')
-            else [1/len(available_features)] * len(available_features)
-        )),
-        'X_test': X_test,
-        'y_test': y_test,
-        'y_pred': trained_models[best_model_name]['model'].predict(X_test_scaled),
-        'y_pred_proba': trained_models[best_model_name]['model'].predict_proba(X_test_scaled)[:, 1]
-    }
+# ─────────────────────────────────────────────
+# ML ENGINE
+# ─────────────────────────────────────────────
+@st.cache_resource
+def build_ml_model():
+    """Train a simple ML classifier for answer quality prediction."""
+    np.random.seed(42)
+    texts, labels = [], []
+    for role_data in QUESTIONS_DB.values():
+        for cat_questions in role_data.values():
+            for item in cat_questions:
+                ideal = item["ideal"]
+                texts.append(ideal); labels.append("Excellent")
+                # Partial answers
+                words = ideal.split()
+                texts.append(" ".join(words[:len(words)//2])); labels.append("Good")
+                texts.append(" ".join(words[:len(words)//4])); labels.append("Average")
+                texts.append("I am not sure about this topic"); labels.append("Poor")
+                texts.append("Maybe yes or no depends"); labels.append("Poor")
+    vectorizer = TfidfVectorizer(max_features=300, ngram_range=(1,2))
+    X = vectorizer.fit_transform(texts)
+    le = LabelEncoder()
+    y = le.fit_transform(labels)
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X, y)
+    return vectorizer, clf, le
 
-# Function to create visualizations
-def create_risk_gauge(probability, title):
-    """Create a gauge chart for risk probability"""
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = probability * 100,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': title, 'font': {'size': 14}},
-        gauge = {
-            'axis': {'range': [0, 100], 'tickwidth': 1},
-            'bar': {'color': get_risk_color(probability)},
-            'steps': [
-                {'range': [0, 30], 'color': "#e8f5e8"},
-                {'range': [30, 60], 'color': "#fff3e0"},
-                {'range': [60, 100], 'color': "#ffebee"}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 70
-            }
-        }
-    ))
-    
-    fig.update_layout(
-        height=200,
-        margin=dict(l=10, r=10, t=50, b=10),
-        paper_bgcolor="rgba(0,0,0,0)",
-        font={'color': "darkblue", 'family': "Arial"}
-    )
-    
-    return fig
+def score_answer_ml(user_answer, ideal_answer, keywords, vectorizer, clf, le):
+    """Score answer using ML + keyword matching + semantic similarity."""
+    if not user_answer.strip():
+        return 0, 0, 0, 0, "No answer provided."
 
-def get_risk_color(probability):
-    """Get color based on risk probability"""
-    if probability < 0.3:
-        return "#4caf50"  # Green
-    elif probability < 0.6:
-        return "#ff9800"  # Orange
+    # 1. ML prediction
+    X_user = vectorizer.transform([user_answer])
+    proba = clf.predict_proba(X_user)[0]
+    classes = le.classes_
+    class_scores = {"Excellent": 95, "Good": 75, "Average": 55, "Poor": 30}
+    ml_score = sum(proba[i] * class_scores.get(c, 50) for i, c in enumerate(classes))
+
+    # 2. Keyword hit rate
+    kw_hits = sum(1 for kw in keywords if kw.lower() in user_answer.lower())
+    kw_score = min(100, (kw_hits / max(len(keywords), 1)) * 120)
+
+    # 3. Cosine similarity
+    tfidf = TfidfVectorizer().fit([ideal_answer, user_answer])
+    vecs  = tfidf.transform([ideal_answer, user_answer])
+    sim   = cosine_similarity(vecs[0], vecs[1])[0][0]
+    sim_score = sim * 100
+
+    # 4. Length / fluency proxy
+    word_count = len(user_answer.split())
+    fluency = min(100, word_count * 4)
+
+    # Weighted composite
+    composite = 0.35*ml_score + 0.30*kw_score + 0.25*sim_score + 0.10*fluency
+
+    found_kws = [kw for kw in keywords if kw.lower() in user_answer.lower()]
+    missing   = [kw for kw in keywords if kw.lower() not in user_answer.lower()]
+    feedback  = f"✅ Good keywords: **{', '.join(found_kws[:4]) if found_kws else 'None found'}**\n\n"
+    feedback += f"💡 Missing keywords: **{', '.join(missing[:4]) if missing else 'None — great coverage!'}**\n\n"
+    if word_count < 20:
+        feedback += "⚠️ Answer is too brief. Try to elaborate with examples and structure.\n"
+    elif word_count > 200:
+        feedback += "ℹ️ Good detail! Make sure to stay concise in real interviews.\n"
     else:
-        return "#f44336"  # Red
+        feedback += "✅ Answer length is appropriate.\n"
 
-def plot_confusion_matrix(y_test, y_pred, title):
-    """Plot confusion matrix"""
-    cm = confusion_matrix(y_test, y_pred)
-    
-    fig = go.Figure(data=go.Heatmap(
-        z=cm,
-        x=['Predicted Negative', 'Predicted Positive'],
-        y=['Actual Negative', 'Actual Positive'],
-        colorscale='Blues',
-        text=cm,
-        texttemplate="%{text}",
-        textfont={"size": 16},
-        hoverinfo='skip'
-    ))
-    
-    fig.update_layout(
-        title=title,
-        height=300,
-        width=400,
-        xaxis_title="Predicted",
-        yaxis_title="Actual"
-    )
-    
-    return fig
+    return round(composite), round(kw_score), round(sim_score), round(fluency), feedback
 
-def plot_roc_curve(y_test, y_pred_proba, title):
-    """Plot ROC curve"""
-    fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
-    roc_auc = auc(fpr, tpr)
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=fpr, y=tpr,
-        mode='lines',
-        name=f'ROC (AUC = {roc_auc:.3f})',
-        line=dict(color='darkorange', width=2)
-    ))
-    fig.add_trace(go.Scatter(
-        x=[0, 1], y=[0, 1],
-        mode='lines',
-        name='Random',
-        line=dict(color='navy', width=2, dash='dash')
-    ))
-    
-    fig.update_layout(
-        title=title,
-        xaxis_title="False Positive Rate",
-        yaxis_title="True Positive Rate",
-        height=300,
-        width=400,
-        showlegend=True
-    )
-    
-    return fig
+# ─────────────────────────────────────────────
+# CHART HELPERS
+# ─────────────────────────────────────────────
+PLOT_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="DM Sans", color="#e2e8f0", size=12),
+    margin=dict(l=10, r=10, t=30, b=10),
+)
 
-def plot_feature_importance(feature_importance, title):
-    """Plot feature importance"""
-    features = list(feature_importance.keys())
-    importance = list(feature_importance.values())
-    
-    # Sort by importance
-    sorted_idx = np.argsort(importance)
-    features = [features[i] for i in sorted_idx]
-    importance = [importance[i] for i in sorted_idx]
-    
-    fig = go.Figure(go.Bar(
-        x=importance,
-        y=features,
-        orientation='h',
-        marker=dict(
-            color=importance,
-            colorscale='Viridis',
-            showscale=True
-        )
-    ))
-    
-    fig.update_layout(
-        title=title,
-        xaxis_title="Importance",
-        yaxis_title="Features",
-        height=400,
-        margin=dict(l=10, r=10, t=40, b=10)
-    )
-    
-    return fig
-
-# Main app
-def main():
-    # Header
-    st.markdown("""
-        <div class="main-header">
-            <h1>🩺 Blood Report Health Risk Analyzer</h1>
-            <p style="font-size: 1.2rem;">Advanced ML-powered analysis for early health risk detection</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Sidebar
-    with st.sidebar:
-        st.image("https://img.icons8.com/color/96/00064A/stethoscope.png", width=100)
-        st.title("Navigation")
-        
-        page = st.radio(
-            "Select Page",
-            ["📊 Data Explorer", "🤖 Model Training", "🔍 Risk Analysis", "📈 Model Performance"]
-        )
-        
-        st.markdown("---")
-        
-        # Sample data info
-        if st.session_state.sample_data is not None:
-            st.success(f"✅ Data loaded: {len(st.session_state.sample_data[0])} samples")
-        
-        # Generate sample data button
-        if st.button("🔄 Generate Sample Data"):
-            with st.spinner("Generating synthetic blood report data..."):
-                st.session_state.sample_data = generate_sample_data(n_samples=5000)
-                st.session_state.models_trained = False
-                st.success("Sample data generated successfully!")
-    
-    # Data Explorer Page
-    if page == "📊 Data Explorer":
-        st.header("📊 Blood Report Data Explorer")
-        
-        if st.session_state.sample_data is None:
-            st.warning("Please generate sample data from the sidebar first!")
-            return
-        
-        df, normal_ranges = st.session_state.sample_data
-        
-        # Data overview
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Samples", len(df))
-        with col2:
-            st.metric("Features", len(df.columns) - 6)  # Subtract target columns
-        with col3:
-            st.metric("Disease Conditions", 6)
-        with col4:
-            st.metric("Data Completeness", "100%")
-        
-        # Dataset preview
-        st.subheader("Dataset Preview")
-        st.dataframe(df.head(10), use_container_width=True)
-        
-        # Statistical summary
-        st.subheader("Statistical Summary")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Numerical Features**")
-            st.dataframe(df.describe(), use_container_width=True)
-        with col2:
-            st.write("**Disease Distribution**")
-            disease_cols = ['heart_disease', 'diabetes', 'kidney_disease', 
-                           'infection', 'anemia', 'liver_disease']
-            disease_dist = df[disease_cols].sum()
-            fig = px.pie(
-                values=disease_dist.values,
-                names=disease_dist.index,
-                title="Disease Prevalence",
-                color_discrete_sequence=px.colors.sequential.Viridis
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # Correlation heatmap
-        st.subheader("Feature Correlation Heatmap")
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        corr_matrix = df[numeric_cols].corr()
-        
-        fig = go.Figure(data=go.Heatmap(
-            z=corr_matrix,
-            x=corr_matrix.columns,
-            y=corr_matrix.columns,
-            colorscale='RdBu',
-            zmid=0,
-            text=corr_matrix.round(2),
-            texttemplate='%{text}',
-            textfont={"size": 8}
-        ))
-        fig.update_layout(height=600, width=800)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Parameter distributions
-        st.subheader("Parameter Distributions")
-        selected_param = st.selectbox(
-            "Select Parameter",
-            options=[col for col in df.columns if col not in ['Gender', 'heart_disease', 'diabetes', 
-                                                              'kidney_disease', 'infection', 'anemia', 'liver_disease']]
-        )
-        
-        fig = make_subplots(rows=1, cols=2, subplot_titles=["Distribution", "Box Plot"])
-        
-        # Histogram
-        fig.add_trace(
-            go.Histogram(x=df[selected_param], nbinsx=50, name="Histogram"),
-            row=1, col=1
-        )
-        
-        # Box plot
-        fig.add_trace(
-            go.Box(y=df[selected_param], name="Box Plot"),
-            row=1, col=2
-        )
-        
-        fig.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Model Training Page
-    elif page == "🤖 Model Training":
-        st.header("🤖 ML Model Training")
-        
-        if st.session_state.sample_data is None:
-            st.warning("Please generate sample data from the sidebar first!")
-            return
-        
-        df, normal_ranges = st.session_state.sample_data
-        
-        # Disease selection
-        st.subheader("Select Disease Model to Train")
-        disease_options = {
-            'heart_disease': '❤️ Heart Disease',
-            'diabetes': '🩸 Diabetes',
-            'kidney_disease': '🧠 Kidney Disease',
-            'infection': '🦠 Infection',
-            'anemia': '💉 Anemia',
-            'liver_disease': '🍷 Liver Disease'
+def gauge_chart(value, title, color="#00e5ff"):
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=value,
+        title={"text": title, "font": {"family":"Syne","size":14,"color":"#94a3b8"}},
+        number={"font": {"family":"Syne","size":28,"color":color}, "suffix":"%"},
+        gauge={
+            "axis": {"range":[0,100], "tickcolor":"#334155", "tickfont":{"size":9,"color":"#64748b"}},
+            "bar": {"color": color, "thickness":0.25},
+            "bgcolor": "#1a2235",
+            "bordercolor": "rgba(0,229,255,0.1)",
+            "steps": [
+                {"range":[0,40],  "color":"rgba(239,68,68,0.15)"},
+                {"range":[40,65], "color":"rgba(245,158,11,0.15)"},
+                {"range":[65,80], "color":"rgba(0,229,255,0.15)"},
+                {"range":[80,100],"color":"rgba(16,185,129,0.15)"},
+            ],
+            "threshold": {"line":{"color":"white","width":2},"thickness":0.75,"value":value},
         }
-        
-        selected_disease = st.selectbox(
-            "Choose disease risk model",
-            options=list(disease_options.keys()),
-            format_func=lambda x: disease_options[x]
-        )
-        
-        # Training button
-        if st.button(f"🚀 Train {disease_options[selected_disease]} Model"):
-            with st.spinner("Training multiple ML models... This may take a moment."):
-                results = train_health_risk_models(df, selected_disease)
-                st.session_state.trained_models[selected_disease] = results
-                st.session_state.model_metrics[selected_disease] = results['all_results']
-                st.session_state.models_trained = True
-                
-                st.success(f"✅ Model training completed! Best model: {results['best_model_name']}")
-        
-        # Display trained models
-        if st.session_state.trained_models:
-            st.subheader("📊 Trained Models Performance")
-            
-            for disease, results in st.session_state.trained_models.items():
-                with st.expander(f"{disease_options[disease]} - Best Model: {results['best_model_name']}"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Metrics table
-                        metrics_df = pd.DataFrame(results['all_results']).T
-                        st.dataframe(metrics_df.style.highlight_max(axis=0), use_container_width=True)
-                    
-                    with col2:
-                        # Feature importance
-                        fig = plot_feature_importance(
-                            results['feature_importance'],
-                            f"Feature Importance - {disease_options[disease]}"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Confusion Matrix and ROC Curve
-                    col3, col4 = st.columns(2)
-                    with col3:
-                        cm_fig = plot_confusion_matrix(
-                            results['y_test'],
-                            results['y_pred'],
-                            "Confusion Matrix"
-                        )
-                        st.plotly_chart(cm_fig, use_container_width=True)
-                    
-                    with col4:
-                        roc_fig = plot_roc_curve(
-                            results['y_test'],
-                            results['y_pred_proba'],
-                            "ROC Curve"
-                        )
-                        st.plotly_chart(roc_fig, use_container_width=True)
-    
-    # Risk Analysis Page
-    elif page == "🔍 Risk Analysis":
-        st.header("🔍 Patient Risk Analysis")
-        
-        if not st.session_state.models_trained:
-            st.warning("Please train at least one model first from the Model Training page!")
-            return
-        
-        # Patient information
-        st.subheader("Patient Information")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            age = st.number_input("Age", min_value=0, max_value=120, value=45)
-        with col2:
-            gender = st.selectbox("Gender", ["male", "female"])
-        with col3:
-            bmi = st.number_input("BMI", min_value=10.0, max_value=50.0, value=24.5, step=0.1)
-        
-        # Blood parameters input
-        st.subheader("Blood Test Parameters")
-        
-        # Create tabs for different parameter categories
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "🩸 Complete Blood Count", 
-            "🧪 Lipid Profile", 
-            "💉 Diabetes & Kidney", 
-            "❤️ Cardiac Markers",
-            "⚕️ Other Parameters"
-        ])
-        
-        blood_values = {}
-        
-        with tab1:
-            col1, col2 = st.columns(2)
-            with col1:
-                blood_values['Hemoglobin'] = st.number_input("Hemoglobin (g/dL)", value=14.0, step=0.1)
-                blood_values['RBC'] = st.number_input("RBC (millions/μL)", value=4.8, step=0.1)
-                blood_values['WBC'] = st.number_input("WBC (thousands/μL)", value=7.5, step=0.1)
-                blood_values['Platelets'] = st.number_input("Platelets (thousands/μL)", value=250, step=1)
-            with col2:
-                blood_values['Neutrophils'] = st.number_input("Neutrophils (%)", value=55.0, step=0.1)
-                blood_values['Lymphocytes'] = st.number_input("Lymphocytes (%)", value=30.0, step=0.1)
-                blood_values['Monocytes'] = st.number_input("Monocytes (%)", value=5.0, step=0.1)
-                blood_values['Eosinophils'] = st.number_input("Eosinophils (%)", value=2.0, step=0.1)
-        
-        with tab2:
-            col1, col2 = st.columns(2)
-            with col1:
-                blood_values['Total_Cholesterol'] = st.number_input("Total Cholesterol (mg/dL)", value=180, step=1)
-                blood_values['HDL'] = st.number_input("HDL (mg/dL)", value=50, step=1)
-            with col2:
-                blood_values['LDL'] = st.number_input("LDL (mg/dL)", value=100, step=1)
-                blood_values['Triglycerides'] = st.number_input("Triglycerides (mg/dL)", value=120, step=1)
-        
-        with tab3:
-            col1, col2 = st.columns(2)
-            with col1:
-                blood_values['Fasting_Glucose'] = st.number_input("Fasting Glucose (mg/dL)", value=95, step=1)
-                blood_values['HbA1c'] = st.number_input("HbA1c (%)", value=5.4, step=0.1)
-                blood_values['Creatinine'] = st.number_input("Creatinine (mg/dL)", value=0.9, step=0.1)
-            with col2:
-                blood_values['BUN'] = st.number_input("BUN (mg/dL)", value=15, step=1)
-                blood_values['Uric_Acid'] = st.number_input("Uric Acid (mg/dL)", value=5.0, step=0.1)
-                blood_values['Albumin'] = st.number_input("Albumin (g/dL)", value=4.2, step=0.1)
-        
-        with tab4:
-            col1, col2 = st.columns(2)
-            with col1:
-                blood_values['Troponin_I'] = st.number_input("Troponin I (ng/mL)", value=0.02, step=0.01, format="%.3f")
-                blood_values['CK_MB'] = st.number_input("CK-MB (ng/mL)", value=3.0, step=0.1)
-            with col2:
-                blood_values['CRP'] = st.number_input("CRP (mg/L)", value=0.5, step=0.1)
-                blood_values['Homocysteine'] = st.number_input("Homocysteine (μmol/L)", value=10.0, step=0.1)
-        
-        with tab5:
-            col1, col2 = st.columns(2)
-            with col1:
-                blood_values['Sodium'] = st.number_input("Sodium (mEq/L)", value=140, step=1)
-                blood_values['Potassium'] = st.number_input("Potassium (mEq/L)", value=4.2, step=0.1)
-                blood_values['Calcium'] = st.number_input("Calcium (mg/dL)", value=9.2, step=0.1)
-            with col2:
-                blood_values['Vitamin_D'] = st.number_input("Vitamin D (ng/mL)", value=40, step=1)
-                blood_values['Vitamin_B12'] = st.number_input("Vitamin B12 (pg/mL)", value=400, step=10)
-                blood_values['Ferritin'] = st.number_input("Ferritin (ng/mL)", value=100, step=1)
-        
-        # Analyze button
-        if st.button("🔬 Analyze Health Risks"):
-            with st.spinner("Analyzing blood parameters..."):
-                # Prepare patient data
-                patient_data = blood_values.copy()
-                patient_data['Age'] = age
-                patient_data['Gender'] = gender
-                patient_data['BMI'] = bmi
-                
-                # Create DataFrame for prediction
-                patient_df = pd.DataFrame([patient_data])
-                
-                # Make predictions for each trained model
-                results = {}
-                
-                for disease, model_info in st.session_state.trained_models.items():
-                    model_data = model_info['best_model']
-                    
-                    # Get required features
-                    required_features = model_data['features']
-                    
-                    # Prepare features
-                    X_pred = pd.DataFrame()
-                    for feat in required_features:
-                        if feat in patient_df.columns:
-                            X_pred[feat] = patient_df[feat]
-                        else:
-                            X_pred[feat] = 0  # Default value
-                    
-                    # Scale and predict
-                    X_scaled = model_data['scaler'].transform(X_pred)
-                    probability = model_data['model'].predict_proba(X_scaled)[0, 1]
-                    
-                    results[disease] = probability
-                
-                # Display results
-                st.subheader("📊 Risk Assessment Results")
-                
-                # Risk gauges
-                cols = st.columns(3)
-                disease_names = {
-                    'heart_disease': 'Heart Disease',
-                    'diabetes': 'Diabetes',
-                    'kidney_disease': 'Kidney Disease',
-                    'infection': 'Infection',
-                    'anemia': 'Anemia',
-                    'liver_disease': 'Liver Disease'
-                }
-                
-                for i, (disease, prob) in enumerate(results.items()):
-                    with cols[i % 3]:
-                        fig = create_risk_gauge(prob, disease_names[disease])
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Risk level indicator
-                        if prob < 0.3:
-                            st.success(f"✅ Low Risk ({prob:.1%})")
-                        elif prob < 0.6:
-                            st.warning(f"⚠️ Moderate Risk ({prob:.1%})")
-                        else:
-                            st.error(f"🔴 High Risk ({prob:.1%})")
-                
-                # Detailed analysis
-                st.subheader("🔍 Detailed Analysis")
-                
-                # Identify abnormal parameters
-                abnormal_params = []
-                for param, value in blood_values.items():
-                    if param in st.session_state.sample_data[1]:
-                        ranges = st.session_state.sample_data[1][param]
-                        if isinstance(ranges, dict):
-                            if gender in ranges:
-                                low, high = ranges[gender]
-                            else:
-                                low, high = ranges['male']
-                        else:
-                            low, high = ranges
-                        
-                        if value < low * 0.9 or value > high * 1.1:
-                            abnormal_params.append({
-                                'parameter': param,
-                                'value': value,
-                                'normal_range': f"{low}-{high}",
-                                'status': 'Low' if value < low else 'High'
-                            })
-                
-                # Display abnormal parameters
-                if abnormal_params:
-                    st.warning(f"⚠️ Found {len(abnormal_params)} abnormal parameters")
-                    abnormal_df = pd.DataFrame(abnormal_params)
-                    st.dataframe(abnormal_df, use_container_width=True)
-                else:
-                    st.success("✅ All parameters within normal range")
-                
-                # Generate insights
-                st.subheader("💡 Health Insights")
-                
-                insights = []
-                
-                # Cross-reference risks
-                if results.get('heart_disease', 0) > 0.6 and results.get('diabetes', 0) > 0.5:
-                    insights.append({
-                        'type': 'warning',
-                        'message': '⚠️ High heart risk with elevated diabetes markers suggests metabolic syndrome'
-                    })
-                
-                if results.get('kidney_disease', 0) > 0.6 and results.get('diabetes', 0) > 0.6:
-                    insights.append({
-                        'type': 'warning',
-                        'message': '⚠️ Kidney weakness with diabetes - risk of diabetic nephropathy'
-                    })
-                
-                if results.get('infection', 0) > 0.7:
-                    insights.append({
-                        'type': 'critical' if results['infection'] > 0.8 else 'warning',
-                        'message': f"{'🔴' if results['infection'] > 0.8 else '⚠️'} Elevated infection markers - possible inflammatory process"
-                    })
-                
-                if results.get('anemia', 0) > 0.6:
-                    insights.append({
-                        'type': 'warning',
-                        'message': '⚠️ Low hemoglobin and RBC indicate possible anemia'
-                    })
-                
-                if results.get('liver_disease', 0) > 0.6:
-                    insights.append({
-                        'type': 'warning',
-                        'message': '⚠️ Elevated liver enzymes suggest liver stress'
-                    })
-                
-                # Display insights
-                for insight in insights:
-                    if insight['type'] == 'critical':
-                        st.markdown(f"<div class='critical-box'>{insight['message']}</div>", unsafe_allow_html=True)
-                    elif insight['type'] == 'warning':
-                        st.markdown(f"<div class='warning-box'>{insight['message']}</div>", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"<div class='insight-box'>{insight['message']}</div>", unsafe_allow_html=True)
-                
-                # Recommendations
-                st.subheader("📋 Recommendations")
-                
-                high_risks = [disease for disease, prob in results.items() if prob > 0.6]
-                moderate_risks = [disease for disease, prob in results.items() if 0.3 < prob < 0.6]
-                
-                if high_risks:
-                    st.error("🚨 **Immediate Action Required:**")
-                    for risk in high_risks:
-                        st.write(f"- Consult healthcare provider for {disease_names[risk]} evaluation")
-                
-                if moderate_risks:
-                    st.warning("⚠️ **Follow-up Recommended:**")
-                    for risk in moderate_risks:
-                        st.write(f"- Schedule check-up for {disease_names[risk]} monitoring")
-                
-                if not high_risks and not moderate_risks:
-                    st.success("✅ **All risks low. Maintain healthy lifestyle:**")
-                    st.write("- Regular exercise (150 mins/week)")
-                    st.write("- Balanced diet rich in fruits and vegetables")
-                    st.write("- Annual health check-up")
-                    st.write("- Stress management")
-    
-    # Model Performance Page
-    elif page == "📈 Model Performance":
-        st.header("📈 Model Performance Dashboard")
-        
-        if not st.session_state.model_metrics:
-            st.warning("No models trained yet. Please train models from the Model Training page!")
-            return
-        
-        # Overall metrics comparison
-        st.subheader("Model Comparison Across Diseases")
-        
-        # Prepare data for comparison
-        comparison_data = []
-        for disease, metrics_dict in st.session_state.model_metrics.items():
-            for model_name, metrics in metrics_dict.items():
-                comparison_data.append({
-                    'Disease': disease,
-                    'Model': model_name,
-                    'Accuracy': metrics['Accuracy'],
-                    'Precision': metrics['Precision'],
-                    'Recall': metrics['Recall'],
-                    'F1-Score': metrics['F1-Score'],
-                    'ROC-AUC': metrics['ROC-AUC']
-                })
-        
-        comparison_df = pd.DataFrame(comparison_data)
-        
-        # Heatmap of model performance
-        fig = go.Figure(data=go.Heatmap(
-            z=comparison_df[['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC']].T.values,
-            x=comparison_df['Disease'] + ' - ' + comparison_df['Model'],
-            y=['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC'],
-            colorscale='Viridis',
-            text=comparison_df[['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC']].T.round(3).values,
-            texttemplate='%{text}',
-            textfont={"size": 10}
-        ))
-        
-        fig.update_layout(
-            title="Model Performance Heatmap",
-            height=400,
-            xaxis_tickangle=-45
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Best model for each disease
-        st.subheader("🏆 Best Models by Disease")
-        
-        best_models = []
-        for disease in st.session_state.model_metrics.keys():
-            disease_metrics = st.session_state.model_metrics[disease]
-            best_model = max(disease_metrics.items(), key=lambda x: x[1]['F1-Score'])
-            best_models.append({
-                'Disease': disease,
-                'Best Model': best_model[0],
-                'F1-Score': best_model[1]['F1-Score'],
-                'ROC-AUC': best_model[1]['ROC-AUC']
-            })
-        
-        best_models_df = pd.DataFrame(best_models)
-        st.dataframe(best_models_df, use_container_width=True)
-        
-        # Performance radar chart
-        st.subheader("📊 Performance Radar Chart")
-        
-        selected_disease = st.selectbox(
-            "Select Disease for Detailed View",
-            options=list(st.session_state.model_metrics.keys())
-        )
-        
-        if selected_disease:
-            metrics = st.session_state.model_metrics[selected_disease]
-            
-            fig = go.Figure()
-            
-            for model_name, model_metrics in metrics.items():
-                fig.add_trace(go.Scatterpolar(
-                    r=[model_metrics['Accuracy'], model_metrics['Precision'], 
-                       model_metrics['Recall'], model_metrics['F1-Score'], 
-                       model_metrics['ROC-AUC']],
-                    theta=['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC'],
-                    fill='toself',
-                    name=model_name
-                ))
-            
-            fig.update_layout(
-                polar=dict(
-                    radialaxis=dict(
-                        visible=True,
-                        range=[0, 1]
-                    )),
-                showlegend=True,
-                title=f"Model Performance Comparison - {selected_disease}"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+    ))
+    fig.update_layout(**PLOT_LAYOUT, height=200)
+    return fig
 
-# Run the app
-if __name__ == "__main__":
-    main()
+def radar_chart(scores_dict):
+    cats = list(scores_dict.keys())
+    vals = list(scores_dict.values())
+    fig = go.Figure(go.Scatterpolar(
+        r=vals + [vals[0]],
+        theta=cats + [cats[0]],
+        fill="toself",
+        fillcolor="rgba(0,229,255,0.15)",
+        line=dict(color="#00e5ff", width=2),
+        marker=dict(color="#00e5ff", size=6),
+    ))
+    fig.update_layout(
+        **PLOT_LAYOUT,
+        polar=dict(
+            bgcolor="rgba(17,24,39,0.8)",
+            radialaxis=dict(visible=True, range=[0,100], tickfont=dict(size=9, color="#64748b"), gridcolor="rgba(255,255,255,0.05)"),
+            angularaxis=dict(tickfont=dict(size=11, color="#94a3b8"), gridcolor="rgba(255,255,255,0.05)"),
+        ),
+        showlegend=False,
+        height=320,
+    )
+    return fig
+
+def progress_line_chart(history_df):
+    fig = go.Figure()
+    colors = {"Avg Score":"#00e5ff", "Confidence":"#7c3aed", "Clarity":"#f59e0b", "Relevance":"#10b981"}
+    for col, clr in colors.items():
+        fig.add_trace(go.Scatter(
+            x=history_df["Session"], y=history_df[col],
+            mode="lines+markers", name=col,
+            line=dict(color=clr, width=2.5, shape="spline"),
+            marker=dict(size=7, color=clr, line=dict(color="white", width=1.5)),
+            fill="tozeroy", fillcolor=f"rgba({int(clr[1:3],16)},{int(clr[3:5],16)},{int(clr[5:7],16)},0.05)",
+        ))
+    fig.update_layout(
+        **PLOT_LAYOUT, height=300,
+        xaxis=dict(gridcolor="rgba(255,255,255,0.04)", tickfont=dict(size=10)),
+        yaxis=dict(gridcolor="rgba(255,255,255,0.04)", range=[0,110], tickfont=dict(size=10)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
+    )
+    return fig
+
+def bar_breakdown_chart(scores):
+    labels = list(scores.keys())
+    vals   = list(scores.values())
+    colors = ["#00e5ff","#7c3aed","#10b981","#f59e0b"]
+    fig = go.Figure(go.Bar(
+        x=labels, y=vals, marker_color=colors,
+        marker_line_color="rgba(255,255,255,0.1)", marker_line_width=1,
+        text=[f"{v}%" for v in vals], textposition="outside",
+        textfont=dict(family="Syne", size=13, color="white"),
+    ))
+    fig.update_layout(
+        **PLOT_LAYOUT, height=260,
+        yaxis=dict(range=[0,115], gridcolor="rgba(255,255,255,0.04)", tickfont=dict(size=10)),
+        xaxis=dict(tickfont=dict(size=11)),
+        bargap=0.35,
+    )
+    return fig
+
+def keyword_heatmap(sessions_scores):
+    cats = ["ML Score", "Keyword Match", "Semantic Sim", "Fluency"]
+    df = pd.DataFrame(sessions_scores, columns=cats)
+    fig = px.imshow(
+        df.T, color_continuous_scale=["#0a0e1a","#1a2235","#00e5ff","#7c3aed"],
+        aspect="auto", zmin=0, zmax=100,
+    )
+    fig.update_layout(**PLOT_LAYOUT, height=200, coloraxis_showscale=False,
+        xaxis=dict(tickvals=list(range(len(sessions_scores))), ticktext=[f"Q{i+1}" for i in range(len(sessions_scores))], tickfont=dict(size=10)),
+        yaxis=dict(tickfont=dict(size=10)),
+    )
+    return fig
+
+def grade_badge(score):
+    if score >= 80: return f'<span class="score-badge badge-excellent">Excellent</span>'
+    elif score >= 65: return f'<span class="score-badge badge-good">Good</span>'
+    elif score >= 45: return f'<span class="score-badge badge-average">Average</span>'
+    else: return f'<span class="score-badge badge-poor">Needs Work</span>'
+
+# ─────────────────────────────────────────────
+# SESSION STATE
+# ─────────────────────────────────────────────
+def init_state():
+    defaults = {
+        "page": "home",
+        "role": "Software Engineer",
+        "category": "Technical",
+        "q_index": 0,
+        "answers": [],
+        "scores": [],
+        "detail_scores": [],
+        "feedbacks": [],
+        "session_done": False,
+        "num_questions": 5,
+        "current_questions": [],
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+init_state()
+vectorizer, clf, le = build_ml_model()
+
+# ─────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+    <div style='text-align:center; padding: 20px 0 12px;'>
+        <div style='font-size:2.5rem;'>🎯</div>
+        <div style='font-family:Syne; font-size:1.3rem; font-weight:800; color:#00e5ff; letter-spacing:-0.02em;'>Interview Coach</div>
+        <div style='font-size:0.75rem; color:#64748b; letter-spacing:0.1em; text-transform:uppercase;'>AI-Powered · ML-Driven</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.divider()
+
+    nav_opts = ["🏠 Home", "🎤 Practice Session", "📊 Analytics", "📚 Question Bank"]
+    page_to_index = {"home": 0, "session": 1, "analytics": 2, "bank": 3}
+    lbl_to_page = {"🏠 Home":"home", "🎤 Practice Session":"session", "📊 Analytics":"analytics", "📚 Question Bank":"bank"}
+    
+    current_index = page_to_index.get(st.session_state.page, 0)
+    selected_val = st.radio("Navigation", nav_opts, index=current_index, label_visibility="collapsed")
+    new_page = lbl_to_page[selected_val]
+    
+    if new_page != st.session_state.page:
+        st.session_state.page = new_page
+        st.rerun()
+
+    st.divider()
+    st.markdown("<div style='font-size:0.8rem; color:#64748b; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:10px;'>Session Config</div>", unsafe_allow_html=True)
+    role = st.selectbox("Target Role", list(QUESTIONS_DB.keys()))
+    cats = list(QUESTIONS_DB[role].keys())
+    cat  = st.selectbox("Category", ["All Categories"] + cats)
+    
+    lang_opts = ["None"] + list(LANGUAGE_DB.keys())
+    coding_lang = st.selectbox("Coding Language", lang_opts)
+    
+    n_q  = st.slider("Questions", 2, 6, 4)
+
+    if st.button("▶ Start New Session", use_container_width=True):
+        st.session_state.role = role
+        st.session_state.category = cat
+        st.session_state.coding_lang = coding_lang
+        st.session_state.num_questions = n_q
+        st.session_state.q_index = 0
+        st.session_state.answers = []
+        st.session_state.scores = []
+        st.session_state.detail_scores = []
+        st.session_state.feedbacks = []
+        st.session_state.session_done = False
+        st.session_state.page = "session"
+        
+        if cat == "All Categories":
+            pool = []
+            for c in QUESTIONS_DB.get(role, {}).values():
+                pool.extend(c)
+        else:
+            pool = list(QUESTIONS_DB.get(role, {}).get(cat, []))
+            
+        if coding_lang != "None":
+            pool.extend(LANGUAGE_DB.get(coding_lang, []))
+            
+        if pool:
+            import random
+            shuffled_pool = random.sample(pool, len(pool))
+            questions = (shuffled_pool * ((n_q // len(shuffled_pool)) + 1))[:n_q]
+            random.shuffle(questions)
+            st.session_state.current_questions = questions
+        else:
+            st.session_state.current_questions = []
+            
+        st.rerun()
+
+# ─────────────────────────────────────────────
+# HOME PAGE
+# ─────────────────────────────────────────────
+if st.session_state.page == "home":
+    st.markdown("""
+    <div style='padding: 40px 0 20px;'>
+        <div style='font-family:Syne; font-size:3rem; font-weight:800; line-height:1.1; letter-spacing:-0.03em;'>
+            Ace Your Next<br><span style='color:#00e5ff;'>Interview</span> with AI
+        </div>
+        <div style='color:#94a3b8; font-size:1.1rem; margin-top:14px; max-width:560px; line-height:1.7;'>
+            Practice with real questions. Get instant ML-powered feedback. Track your growth across sessions.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns(4)
+    metrics = [("3", "Roles Available"), ("20+", "Questions"), ("4", "Scoring Dimensions"), ("ML", "Powered Engine")]
+    for col, (val, lbl) in zip([col1,col2,col3,col4], metrics):
+        col.markdown(f'<div class="metric-card"><div class="val">{val}</div><div class="label">{lbl}</div></div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.markdown('<div class="section-header">🔬 How It Works</div>', unsafe_allow_html=True)
+        steps = [("1", "Choose Role & Category", "Select your target job and question type in the sidebar."),
+                 ("2", "Answer Questions", "Type your answers naturally — no time pressure."),
+                 ("3", "Get ML Feedback", "Instant scoring across 4 dimensions using ML + NLP."),
+                 ("4", "Track Progress", "View trends and improve session over session.")]
+        for num, title, desc in steps:
+            st.markdown(f"""
+            <div style='display:flex; gap:14px; align-items:flex-start; margin-bottom:16px;'>
+                <div style='background:linear-gradient(135deg,#00e5ff,#7c3aed); border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-family:Syne; font-weight:800; font-size:0.9rem; flex-shrink:0;'>{num}</div>
+                <div><div style='font-family:Syne; font-weight:600; color:#e2e8f0;'>{title}</div><div style='color:#64748b; font-size:0.88rem; margin-top:3px;'>{desc}</div></div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    with c2:
+        st.markdown('<div class="section-header">📈 Sample Progress</div>', unsafe_allow_html=True)
+        st.plotly_chart(progress_line_chart(SAMPLE_HISTORY[:8]), use_container_width=True, config={"displayModeBar":False})
+
+    st.markdown('<div class="section-header">🎯 Supported Roles</div>', unsafe_allow_html=True)
+    role_cols = st.columns(3)
+    role_names = list(QUESTIONS_DB.keys())
+    colors = ["#00e5ff", "#7c3aed", "#f59e0b", "#10b981", "#ef4444", "#3b82f6", "#f472b6", "#14b8a6", "#eab308"]
+    for i, role_key in enumerate(role_names):
+        if i >= 9:
+            break
+        col = role_cols[i % 3]
+        cats_str = " · ".join(QUESTIONS_DB[role_key].keys())
+        color = colors[i % len(colors)]
+        icon = "💼"
+        if "Engineer" in role_key or "Developer" in role_key: icon = "💻"
+        elif "Data" in role_key: icon = "📊"
+        elif "Manager" in role_key: icon = "🗂"
+        elif "Designer" in role_key: icon = "🎨"
+        elif "Ops" in role_key: icon = "⚙️"
+        
+        col.markdown(f"""
+        <div style='background:linear-gradient(135deg,#111827,#1a2235); border:1px solid rgba(255,255,255,0.06); border-top:3px solid {color}; border-radius:14px; padding:20px; text-align:center; margin-bottom:15px;'>
+            <div style='font-family:Syne; font-size:1.05rem; font-weight:700; color:{color};'>{icon} {role_key}</div>
+            <div style='color:#64748b; font-size:0.82rem; margin-top:6px;'>{cats_str}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# PRACTICE SESSION PAGE
+# ─────────────────────────────────────────────
+elif st.session_state.page == "session":
+    role = st.session_state.role
+    cat  = st.session_state.category
+    n_q  = st.session_state.num_questions
+    questions = st.session_state.get("current_questions", [])
+
+    if not questions:
+        st.warning("No questions found for this session. Please start a new session from the sidebar.")
+    else:
+        if not st.session_state.session_done:
+            idx = st.session_state.q_index
+            q   = questions[idx]
+
+            # Header
+            st.markdown(f"""
+            <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;'>
+                <div style='font-family:Syne; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.1em; color:#64748b;'>{role} · {cat}</div>
+                <div style='font-family:Syne; font-size:0.85rem; color:#00e5ff;'>Question {idx+1} / {n_q}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.progress((idx) / n_q)
+
+            st.markdown(f"""
+            <div style='background:linear-gradient(135deg,#111827,#1a2235); border:1px solid rgba(0,229,255,0.15); border-radius:16px; padding:26px 28px; margin:18px 0;'>
+                <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:0.12em; color:#00e5ff; margin-bottom:10px;'>Question</div>
+                <div style='font-family:Syne; font-size:1.25rem; font-weight:600; color:#f1f5f9; line-height:1.5;'>{q["q"]}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("<div style='font-size:0.85rem; color:#64748b; margin-bottom:8px;'>🎙️ Or use voice to answer:</div>", unsafe_allow_html=True)
+            audio_bytes = st.audio_input("Record Voice Answer", label_visibility="collapsed", key=f"audio_{idx}")
+
+            if audio_bytes is not None:
+                if f"prev_audio_{idx}" not in st.session_state or st.session_state[f"prev_audio_{idx}"] != audio_bytes.getvalue():
+                    st.session_state[f"prev_audio_{idx}"] = audio_bytes.getvalue()
+                    with st.spinner("Transcribing..."):
+                        try:
+                            r = sr.Recognizer()
+                            with sr.AudioFile(audio_bytes) as source:
+                                audio_data = r.record(source)
+                                text = r.recognize_google(audio_data)
+                                
+                                current_text = st.session_state.get(f"ans_{idx}", "")
+                                if current_text:
+                                    st.session_state[f"ans_{idx}"] = current_text + "\n" + text
+                                else:
+                                    st.session_state[f"ans_{idx}"] = text
+                                st.rerun()
+                        except sr.UnknownValueError:
+                            st.error("Could not understand the audio. Please try speaking clearer or closer to the microphone.")
+                        except sr.RequestError as e:
+                            st.error(f"Speech recognition service error: {e}")
+                        except Exception as e:
+                            st.error(f"Error processing audio: {e}")
+
+            answer = st.text_area("Your Answer", height=160, placeholder="Type your answer here or record voice above...", key=f"ans_{idx}", label_visibility="collapsed")
+            wc = len(answer.split()) if answer.strip() else 0
+            st.markdown(f"<div style='font-size:0.78rem; color:#64748b; text-align:right;'>Word count: {wc}</div>", unsafe_allow_html=True)
+
+            btn_cols = st.columns([1,1,4])
+            has_answered = len(st.session_state.answers) > idx
+            if not has_answered:
+                submit = btn_cols[0].button("✅ Submit")
+                skip   = btn_cols[1].button("⏭ Skip")
+
+                if submit or skip:
+                    final_answer = answer if submit else ""
+                    score, kw_s, sim_s, flu_s, fb = score_answer_ml(
+                        final_answer, q["ideal"], q["keywords"], vectorizer, clf, le
+                    )
+                    st.session_state.answers.append(final_answer)
+                    st.session_state.scores.append(score)
+                    st.session_state.detail_scores.append([score, kw_s, sim_s, flu_s])
+                    st.session_state.feedbacks.append(fb)
+                    st.rerun()
+            else:
+                score = st.session_state.scores[idx]
+                kw_s, sim_s, flu_s = st.session_state.detail_scores[idx][1:]
+                fb = st.session_state.feedbacks[idx]
+
+                # Instant result
+                with st.expander("📋 Instant Feedback", expanded=True):
+                    r1, r2, r3, r4 = st.columns(4)
+                    r1.plotly_chart(gauge_chart(score,   "Overall"),  use_container_width=True, config={"displayModeBar":False})
+                    r2.plotly_chart(gauge_chart(kw_s,  "#Keywords", "#7c3aed"), use_container_width=True, config={"displayModeBar":False})
+                    r3.plotly_chart(gauge_chart(sim_s, "Semantic",  "#f59e0b"), use_container_width=True, config={"displayModeBar":False})
+                    r4.plotly_chart(gauge_chart(flu_s, "Fluency",   "#10b981"), use_container_width=True, config={"displayModeBar":False})
+
+                    st.markdown(f'<div class="feedback-box">{fb}</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="font-size:0.85rem; color:#64748b; font-style:italic; margin-top:8px;">💡 Ideal answer hint:</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="background:#1a2235; border-radius:10px; padding:14px 18px; color:#94a3b8; font-size:0.88rem; line-height:1.6;">{q["ideal"]}</div>', unsafe_allow_html=True)
+
+                if idx + 1 < n_q:
+                    if st.button("Next Question →"):
+                        st.session_state.q_index += 1
+                        st.rerun()
+                else:
+                    if st.button("📊 View Results"):
+                        st.session_state.session_done = True
+                        st.rerun()
+
+        else:
+            # SESSION RESULTS
+            scores = st.session_state.scores
+            detail = st.session_state.detail_scores
+            avg = int(np.mean(scores)) if scores else 0
+
+            st.markdown(f"""
+            <div style='text-align:center; padding:30px 0 20px;'>
+                <div style='font-size:3.5rem;'>{"🏆" if avg>=80 else "✅" if avg>=65 else "📚"}</div>
+                <div style='font-family:Syne; font-size:2rem; font-weight:800; color:#00e5ff;'>Session Complete!</div>
+                <div style='color:#64748b; margin-top:6px;'>Here's your performance breakdown</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.markdown(f'<div class="metric-card"><div class="val">{avg}%</div><div class="label">Overall Score</div></div>', unsafe_allow_html=True)
+            m2.markdown(f'<div class="metric-card"><div class="val">{len(scores)}</div><div class="label">Questions</div></div>', unsafe_allow_html=True)
+            best = max(scores) if scores else 0
+            m3.markdown(f'<div class="metric-card"><div class="val">{best}%</div><div class="label">Best Answer</div></div>', unsafe_allow_html=True)
+            grade_lbl = "Excellent" if avg>=80 else "Good" if avg>=65 else "Average" if avg>=45 else "Keep Practicing"
+            m4.markdown(f'<div class="metric-card"><div class="val" style="font-size:1.4rem">{grade_lbl}</div><div class="label">Grade</div></div>', unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            v1, v2 = st.columns([1,1])
+            with v1:
+                st.markdown('<div class="section-header">📊 Score Breakdown</div>', unsafe_allow_html=True)
+                avg_detail = np.mean(detail, axis=0).tolist() if detail else [0,0,0,0]
+                dim_scores = {"ML Score": int(avg_detail[0]), "Keyword Match": int(avg_detail[1]),
+                              "Semantic Sim": int(avg_detail[2]), "Fluency": int(avg_detail[3])}
+                st.plotly_chart(bar_breakdown_chart(dim_scores), use_container_width=True, config={"displayModeBar":False})
+
+            with v2:
+                st.markdown('<div class="section-header">🕸 Skill Radar</div>', unsafe_allow_html=True)
+                radar_scores = {"Content": int(avg_detail[1]), "Relevance": int(avg_detail[2]),
+                                "Fluency": int(avg_detail[3]), "Accuracy": int(avg_detail[0]),
+                                "Structure": min(100, int(avg_detail[3]*0.9 + avg_detail[2]*0.1))}
+                st.plotly_chart(radar_chart(radar_scores), use_container_width=True, config={"displayModeBar":False})
+
+            if len(detail) > 1:
+                st.markdown('<div class="section-header">🔥 Per-Question Heatmap</div>', unsafe_allow_html=True)
+                st.plotly_chart(keyword_heatmap(detail), use_container_width=True, config={"displayModeBar":False})
+
+            st.markdown('<div class="section-header">📋 Answer Review</div>', unsafe_allow_html=True)
+            qs = st.session_state.get("current_questions", [])
+            for i, (q, ans, sc, fb) in enumerate(zip(qs, st.session_state.answers, scores, st.session_state.feedbacks)):
+                with st.expander(f"Q{i+1}: {q['q'][:60]}...  {grade_badge(sc)}", expanded=False):
+                    st.markdown(f"**Your answer:** {ans if ans else '_Skipped_'}")
+                    st.markdown(f'<div class="feedback-box">{fb}</div>', unsafe_allow_html=True)
+                    st.markdown(f"**Ideal:** _{q['ideal']}_")
+
+# ─────────────────────────────────────────────
+# ANALYTICS PAGE
+# ─────────────────────────────────────────────
+elif st.session_state.page == "analytics":
+    st.markdown('<h2 style="font-family:Syne; color:#00e5ff; letter-spacing:-0.02em;">📊 Progress Analytics</h2>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#64748b;">Based on sample training data — your real sessions will populate this over time.</p>', unsafe_allow_html=True)
+
+    a1, a2, a3 = st.columns(3)
+    a1.markdown('<div class="metric-card"><div class="val">76%</div><div class="label">Latest Score</div></div>', unsafe_allow_html=True)
+    a2.markdown('<div class="metric-card"><div class="val">+24pts</div><div class="label">Improvement</div></div>', unsafe_allow_html=True)
+    a3.markdown('<div class="metric-card"><div class="val">8</div><div class="label">Sessions Done</div></div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📈 Score Trends Over Sessions</div>', unsafe_allow_html=True)
+    st.plotly_chart(progress_line_chart(SAMPLE_HISTORY), use_container_width=True, config={"displayModeBar":False})
+
+    p1, p2 = st.columns(2)
+    with p1:
+        st.markdown('<div class="section-header">🧪 Role Comparison</div>', unsafe_allow_html=True)
+        role_avg = SAMPLE_HISTORY.groupby("Role")["Avg Score"].mean().reset_index()
+        fig_bar = px.bar(role_avg, x="Role", y="Avg Score",
+            color="Avg Score", color_continuous_scale=["#0a0e1a","#00e5ff","#7c3aed"],
+            text_auto=True)
+        fig_bar.update_layout(**PLOT_LAYOUT, height=260, showlegend=False,
+            yaxis=dict(range=[0,100], gridcolor="rgba(255,255,255,0.04)"),
+            coloraxis_showscale=False)
+        st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar":False})
+
+    with p2:
+        st.markdown('<div class="section-header">🎯 Dimension Distribution</div>', unsafe_allow_html=True)
+        avg_dims = {
+            "Confidence": SAMPLE_HISTORY["Confidence"].mean(),
+            "Clarity":    SAMPLE_HISTORY["Clarity"].mean(),
+            "Relevance":  SAMPLE_HISTORY["Relevance"].mean(),
+        }
+        fig_pie = go.Figure(go.Pie(
+            labels=list(avg_dims.keys()), values=list(avg_dims.values()),
+            hole=0.55, marker=dict(colors=["#00e5ff","#7c3aed","#f59e0b"]),
+            textfont=dict(family="Syne", size=12),
+        ))
+        fig_pie.update_layout(**PLOT_LAYOUT, height=260, showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.15))
+        st.plotly_chart(fig_pie, use_container_width=True, config={"displayModeBar":False})
+
+    st.markdown('<div class="section-header">📋 Session History</div>', unsafe_allow_html=True)
+    display_df = SAMPLE_HISTORY[["Session","Date","Role","Avg Score","Questions"]].copy()
+    display_df["Date"] = display_df["Date"].dt.strftime("%b %d, %Y")
+    display_df["Grade"] = display_df["Avg Score"].apply(
+        lambda s: "🏆 Excellent" if s>=80 else "✅ Good" if s>=65 else "📊 Average" if s>=45 else "📚 Needs Work")
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+# ─────────────────────────────────────────────
+# QUESTION BANK PAGE
+# ─────────────────────────────────────────────
+elif st.session_state.page == "bank":
+    st.markdown('<h2 style="font-family:Syne; color:#00e5ff; letter-spacing:-0.02em;">📚 Question Bank</h2>', unsafe_allow_html=True)
+
+    f1, f2 = st.columns(2)
+    with f1: role_f = st.selectbox("Filter by Role", list(QUESTIONS_DB.keys()), key="bank_role")
+    with f2: cat_f  = st.selectbox("Filter by Category", ["All Categories"] + list(QUESTIONS_DB[role_f].keys()), key="bank_cat")
+
+    if cat_f == "All Categories":
+        questions = []
+        for c in QUESTIONS_DB[role_f].values():
+            questions.extend(c)
+    else:
+        questions = QUESTIONS_DB[role_f][cat_f]
+    st.markdown(f"<div style='color:#64748b; font-size:0.85rem; margin:8px 0 20px;'>Showing {len(questions)} questions for <b style='color:#00e5ff;'>{role_f} · {cat_f}</b></div>", unsafe_allow_html=True)
+
+    for i, item in enumerate(questions):
+        with st.expander(f"Q{i+1}. {item['q']}", expanded=False):
+            st.markdown(f"**💡 Ideal Answer:**")
+            st.markdown(f'<div class="feedback-box">{item["ideal"]}</div>', unsafe_allow_html=True)
+            kw_html = "".join([f'<span style="background:rgba(0,229,255,0.1); color:#00e5ff; border:1px solid rgba(0,229,255,0.3); border-radius:6px; padding:3px 10px; font-size:0.8rem; margin:3px; display:inline-block;">{kw}</span>' for kw in item["keywords"]])
+            st.markdown(f"**🔑 Key Terms:**<br>{kw_html}", unsafe_allow_html=True)
+
+    st.markdown(f"<br><div style='color:#64748b; font-size:0.82rem; text-align:center;'>Total questions in bank: <b style='color:#e2e8f0;'>{sum(len(q) for r in QUESTIONS_DB.values() for q in r.values())}</b></div>", unsafe_allow_html=True)

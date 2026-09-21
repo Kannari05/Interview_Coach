@@ -4,6 +4,8 @@ import numpy as np
 import random
 import time
 import re
+import sys
+from pathlib import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.ensemble import RandomForestClassifier
@@ -219,8 +221,254 @@ div[data-testid="stMarkdownContainer"] p { color: var(--text) !important; }
 # ─────────────────────────────────────────────
 # SAMPLE DATA
 # ─────────────────────────────────────────────
-from questions import QUESTIONS_DB
-from languages import LANGUAGE_DB
+PROJECT_DIR = Path(__file__).resolve().parent
+
+# QUESTION DATABASE
+# Kept inside this file so the app does not depend on questions.py.
+QUESTIONS_DB = {
+    "Software Engineer": {
+        "Technical": [
+            {
+                "q": "What is OOP?",
+                "ideal": "OOP is a programming approach based on classes and objects. Its main concepts are encapsulation, inheritance, polymorphism, and abstraction.",
+                "keywords": ["class", "object", "encapsulation", "inheritance", "polymorphism"]
+            },
+            {
+                "q": "What is the difference between an array and a linked list?",
+                "ideal": "An array stores elements in contiguous memory and supports fast index access. A linked list stores nodes connected by links and is better suited to insertion and deletion when the node position is known.",
+                "keywords": ["array", "linked list", "index", "memory", "insertion"]
+            },
+            {
+                "q": "What is binary search?",
+                "ideal": "Binary search finds an element in a sorted array by repeatedly dividing the search range into two halves. Its time complexity is O(log n).",
+                "keywords": ["sorted", "half", "O(log n)", "search"]
+            },
+            {
+                "q": "What is a stack?",
+                "ideal": "A stack is a linear data structure that follows LIFO, meaning the last element inserted is the first element removed. Common operations are push and pop.",
+                "keywords": ["LIFO", "push", "pop", "data structure"]
+            }
+        ],
+        "DBMS": [
+            {
+                "q": "What is a primary key?",
+                "ideal": "A primary key uniquely identifies each record in a database table. It cannot contain duplicate values and normally cannot be NULL.",
+                "keywords": ["unique", "record", "table", "duplicate", "NULL"]
+            },
+            {
+                "q": "What is the difference between INNER JOIN and LEFT JOIN?",
+                "ideal": "INNER JOIN returns rows that have matching values in both tables. LEFT JOIN returns all rows from the left table and matching rows from the right table, using NULL when there is no match.",
+                "keywords": ["INNER JOIN", "LEFT JOIN", "matching", "NULL"]
+            },
+            {
+                "q": "What is normalization?",
+                "ideal": "Normalization organizes database tables to reduce data redundancy and improve data consistency by dividing data into related tables.",
+                "keywords": ["redundancy", "consistency", "tables", "normalization"]
+            }
+        ],
+        "HR": [
+            {
+                "q": "Tell me about yourself.",
+                "ideal": "I am a final-year Computer Science student with an interest in software development. I have worked on projects using programming, databases, and web technologies, and I am looking for an opportunity where I can apply my skills and learn from a professional team.",
+                "keywords": ["final-year", "Computer Science", "projects", "software", "learn"]
+            },
+            {
+                "q": "Why should we hire you?",
+                "ideal": "You should hire me because I have a strong learning attitude, practical project experience, and a willingness to take responsibility. As a fresher, I can adapt quickly and I am ready to learn the technologies required for the role.",
+                "keywords": ["learning", "projects", "adapt", "fresher", "responsibility"]
+            }
+        ]
+    },
+    "Data Scientist": {
+        "Technical": [
+            {
+                "q": "What is machine learning?",
+                "ideal": "Machine learning is a branch of artificial intelligence where algorithms learn patterns from data and use those patterns to make predictions or decisions.",
+                "keywords": ["machine learning", "AI", "data", "patterns", "predictions"]
+            },
+            {
+                "q": "What is the difference between supervised and unsupervised learning?",
+                "ideal": "Supervised learning uses labeled data to learn a mapping from inputs to outputs. Unsupervised learning works with unlabeled data to discover patterns such as clusters.",
+                "keywords": ["supervised", "unsupervised", "labeled", "unlabeled", "clusters"]
+            },
+            {
+                "q": "What is overfitting?",
+                "ideal": "Overfitting happens when a model learns the training data too closely, including noise, and performs poorly on unseen data. It can be reduced using more data, regularization, cross-validation, or simpler models.",
+                "keywords": ["overfitting", "training", "unseen", "regularization", "cross-validation"]
+            }
+        ],
+        "Python": [
+            {
+                "q": "What is a Python list?",
+                "ideal": "A Python list is an ordered and mutable collection that can store multiple values. It can contain elements of different data types.",
+                "keywords": ["ordered", "mutable", "collection", "elements"]
+            },
+            {
+                "q": "What is Pandas used for?",
+                "ideal": "Pandas is a Python library used for data manipulation and analysis. Its main structures include Series and DataFrame.",
+                "keywords": ["Pandas", "data", "DataFrame", "analysis"]
+            }
+        ],
+        "Statistics": [
+            {
+                "q": "What is the difference between mean and median?",
+                "ideal": "Mean is the sum of all values divided by the number of values. Median is the middle value after sorting the data. Median is generally less affected by extreme outliers.",
+                "keywords": ["mean", "median", "average", "outliers", "sorted"]
+            }
+        ]
+    },
+    "Java Developer": {
+        "Java": [
+            {
+                "q": "What is the difference between JDK, JRE, and JVM?",
+                "ideal": "JVM executes Java bytecode. JRE provides the JVM and libraries needed to run Java applications. JDK includes the JRE plus development tools such as the Java compiler.",
+                "keywords": ["JDK", "JRE", "JVM", "bytecode", "compiler"]
+            },
+            {
+                "q": "What is inheritance in Java?",
+                "ideal": "Inheritance allows a child class to acquire properties and methods from a parent class. In Java, class inheritance is commonly implemented using the extends keyword.",
+                "keywords": ["inheritance", "child", "parent", "extends", "class"]
+            },
+            {
+                "q": "What is method overloading?",
+                "ideal": "Method overloading means defining multiple methods with the same name but different parameter lists in the same class.",
+                "keywords": ["overloading", "same name", "parameters", "method"]
+            },
+            {
+                "q": "What is a HashMap?",
+                "ideal": "HashMap is a Java collection that stores key-value pairs. It uses hashing for efficient average-case insertion, lookup, and deletion.",
+                "keywords": ["HashMap", "key", "value", "hashing", "lookup"]
+            }
+        ],
+        "DBMS": [
+            {
+                "q": "What is a foreign key?",
+                "ideal": "A foreign key is a column or set of columns that references a key in another table. It is used to establish a relationship between tables.",
+                "keywords": ["foreign key", "reference", "table", "relationship"]
+            }
+        ],
+        "HR": [
+            {
+                "q": "Why do you want to become a Java developer?",
+                "ideal": "I like Java because it has strong object-oriented concepts, a large ecosystem, and is widely used for backend and enterprise applications. I want to build reliable applications and grow as a backend developer.",
+                "keywords": ["Java", "object-oriented", "backend", "applications", "developer"]
+            }
+        ]
+    },
+    "Web Developer": {
+        "Frontend": [
+            {
+                "q": "What is the difference between HTML, CSS, and JavaScript?",
+                "ideal": "HTML provides the structure of a web page, CSS controls its presentation and layout, and JavaScript adds behavior and interactivity.",
+                "keywords": ["HTML", "CSS", "JavaScript", "structure", "style", "interactivity"]
+            },
+            {
+                "q": "What is the DOM?",
+                "ideal": "The DOM, or Document Object Model, represents an HTML document as a tree of objects. JavaScript can use the DOM to read, change, add, or remove elements.",
+                "keywords": ["DOM", "HTML", "tree", "JavaScript", "elements"]
+            },
+            {
+                "q": "What is an API?",
+                "ideal": "An API is an interface that allows one software application to communicate with another. Web APIs commonly use HTTP methods such as GET, POST, PUT, and DELETE.",
+                "keywords": ["API", "communication", "HTTP", "GET", "POST"]
+            }
+        ],
+        "JavaScript": [
+            {
+                "q": "What is a callback function?",
+                "ideal": "A callback is a function passed to another function as an argument so it can be executed later or when a particular operation is completed.",
+                "keywords": ["callback", "function", "argument", "executed"]
+            },
+            {
+                "q": "What is the difference between let, const, and var?",
+                "ideal": "let and const are block scoped, while var is function scoped. A const variable cannot be reassigned, while a let variable can be reassigned.",
+                "keywords": ["let", "const", "var", "block", "scope"]
+            }
+        ],
+        "HR": [
+            {
+                "q": "Describe a project you worked on.",
+                "ideal": "I worked on a project where I identified a practical problem, designed the application flow, implemented the main features, tested the application, and improved it based on issues I found.",
+                "keywords": ["project", "problem", "implemented", "tested", "features"]
+            }
+        ]
+    },
+    "Data Engineer": {
+        "SQL": [
+            {
+                "q": "What is the difference between WHERE and HAVING?",
+                "ideal": "WHERE filters individual rows before grouping, while HAVING filters groups after GROUP BY and is commonly used with aggregate functions.",
+                "keywords": ["WHERE", "HAVING", "GROUP BY", "rows", "aggregate"]
+            },
+            {
+                "q": "What is an index in a database?",
+                "ideal": "An index is a data structure that helps the database find rows faster. It can improve read performance but may require additional storage and can slow some insert and update operations.",
+                "keywords": ["index", "database", "rows", "read", "storage"]
+            }
+        ],
+        "Data Engineering": [
+            {
+                "q": "What is ETL?",
+                "ideal": "ETL stands for Extract, Transform, Load. Data is extracted from sources, transformed into the required format, and loaded into a target system such as a data warehouse.",
+                "keywords": ["ETL", "Extract", "Transform", "Load", "warehouse"]
+            },
+            {
+                "q": "What is a data warehouse?",
+                "ideal": "A data warehouse is a centralized system designed to store integrated historical data for reporting, analytics, and business intelligence.",
+                "keywords": ["data warehouse", "historical", "analytics", "reporting"]
+            }
+        ],
+        "Python": [
+            {
+                "q": "Why is Python commonly used in data engineering?",
+                "ideal": "Python has a large ecosystem for data processing, automation, APIs, and integration with data tools. It also has libraries that simplify working with files, databases, and distributed systems.",
+                "keywords": ["Python", "data", "automation", "APIs", "libraries"]
+            }
+        ]
+    }
+}
+
+
+# CODING LANGUAGE QUESTION BANK
+# Kept inside this file so the app does not depend on languages.py.
+LANGUAGE_DB = {
+    "Java": [
+        {
+            "q": "What is the difference between == and equals() in Java?",
+            "ideal": "For objects, == compares references, while equals() is used to compare object content when the class implements it appropriately. For primitive values, == compares values.",
+            "keywords": ["==", "equals", "reference", "content", "primitive"]
+        },
+        {
+            "q": "What is the difference between ArrayList and LinkedList?",
+            "ideal": "ArrayList is backed by a dynamic array and provides fast random access. LinkedList is node based and can be useful for insertions and deletions when positions are known.",
+            "keywords": ["ArrayList", "LinkedList", "array", "random access", "insertion"]
+        }
+    ],
+    "Python": [
+        {
+            "q": "What is the difference between a list and a tuple in Python?",
+            "ideal": "A list is mutable, while a tuple is immutable. Both are ordered collections and can contain multiple values.",
+            "keywords": ["list", "tuple", "mutable", "immutable", "ordered"]
+        },
+        {
+            "q": "What is a dictionary in Python?",
+            "ideal": "A dictionary stores data as key-value pairs. Keys are used to access their corresponding values.",
+            "keywords": ["dictionary", "key", "value", "pairs"]
+        }
+    ],
+    "JavaScript": [
+        {
+            "q": "What is a closure in JavaScript?",
+            "ideal": "A closure is created when a function remembers and can access variables from its outer lexical scope even after the outer function has finished executing.",
+            "keywords": ["closure", "function", "outer", "scope", "variables"]
+        },
+        {
+            "q": "What is the difference between map, filter, and reduce?",
+            "ideal": "map transforms every element and returns a new array, filter returns elements that satisfy a condition, and reduce combines elements into a single result.",
+            "keywords": ["map", "filter", "reduce", "array", "transform"]
+        }
+    ]
+}
 
 SAMPLE_HISTORY = pd.DataFrame({
     "Session": [f"Session {i}" for i in range(1, 9)],
